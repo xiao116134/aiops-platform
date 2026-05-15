@@ -26,7 +26,7 @@ AiOps/
 ## 前端启动
 
 ```bash
-cd /Users/xiaohuixing/Desktop/AiOps
+cd <AIOPS_PROJECT_ROOT>
 npm install
 cp .env.example .env
 npm run dev
@@ -39,7 +39,7 @@ npm run dev
 1) 准备环境变量（生产建议）
 
 ```bash
-cd /Users/xiaohuixing/Desktop/AiOps
+cd <AIOPS_PROJECT_ROOT>
 cp .env.compose.example .env.compose
 ```
 
@@ -91,7 +91,7 @@ docker compose --env-file .env.compose down -v
 ## 后端启动
 
 ```bash
-cd /Users/xiaohuixing/Desktop/AiOps/backend
+cd <AIOPS_PROJECT_ROOT>/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -103,11 +103,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## 环境变量
 
-### 前端（`/Users/xiaohuixing/Desktop/AiOps/.env`）
+### 前端（`<AIOPS_PROJECT_ROOT>/.env`）
 
 - `VITE_API_BASE_URL`：后端 API 地址（默认 `http://localhost:8000`）
 
-### 后端（`/Users/xiaohuixing/Desktop/AiOps/backend/.env`）
+### 后端（`<AIOPS_PROJECT_ROOT>/backend/.env`）
 
 - `APP_NAME`：服务名
 - `APP_HOST`：监听地址
@@ -228,7 +228,7 @@ CORS_ORIGINS=https://aiops.example.com,https://ops.example.com,http://192.168.0.
 ## PostgreSQL 验证（Compose）
 
 ```bash
-cd /Users/xiaohuixing/Desktop/AiOps
+cd <AIOPS_PROJECT_ROOT>
 docker compose --env-file .env.compose exec -T postgres \
   psql -U ${POSTGRES_USER:-aiops} -d ${POSTGRES_DB:-aiops} \
   -c "select username, role from users order by username;"
