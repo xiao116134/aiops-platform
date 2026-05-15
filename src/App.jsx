@@ -10,6 +10,7 @@ import {
   logout,
   silenceAlert,
   uploadAvatar,
+  updateProfile,
 } from './api/auth'
 import './App.css'
 
@@ -141,11 +142,13 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
   const userMenuRef = useRef(null)
   const [avatarModalOpen, setAvatarModalOpen] = useState(false)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [themeModalOpen, setThemeModalOpen] = useState(false)
 
   const [avatarFile, setAvatarFile] = useState(null)
   const [avatarPreview, setAvatarPreview] = useState('')
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
+  const [profileForm, setProfileForm] = useState({ email: currentUser.email || '', phone: currentUser.phone || '' })
   const [alertFilters, setAlertFilters] = useState({ level: 'all', status: 'all', service: 'all', q: '' })
   const [alerts, setAlerts] = useState([])
   const [alertServices, setAlertServices] = useState([])
@@ -341,6 +344,34 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
     }
   }
 
+  const saveProfile = async () => {
+    const email = profileForm.email.trim()
+    const phone = profileForm.phone.trim()
+
+    if (!email || !phone) {
+      onProfileMessage('请完整填写邮箱和手机号。', true)
+      return
+    }
+    if (!email.includes('@')) {
+      onProfileMessage('邮箱格式不正确。', true)
+      return
+    }
+    if (!/^1\d{10}$/.test(phone)) {
+      onProfileMessage('手机号需为 11 位大陆手机号。', true)
+      return
+    }
+
+    try {
+      const result = await updateProfile({ email, phone })
+      await onUserRefresh()
+      setProfileModalOpen(false)
+      setMenuOpen(false)
+      onProfileMessage(result.message || '用户信息已更新。')
+    } catch (error) {
+      onProfileMessage(error.message || '用户信息更新失败，请稍后再试。', true)
+    }
+  }
+
   const savePassword = async () => {
     if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
       onProfileMessage('请完整填写密码信息。', true)
@@ -495,6 +526,13 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
             </button>
             {menuOpen ? (
               <div className="user-dropdown">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileForm({ email: currentUser.email || '', phone: currentUser.phone || '' })
+                    setProfileModalOpen(true)
+                  }}
+                >用户信息</button>
                 <button type="button" onClick={() => setAvatarModalOpen(true)}>修改头像</button>
                 <button type="button" onClick={() => setPasswordModalOpen(true)}>修改密码</button>
                 <button type="button" onClick={() => setThemeModalOpen(true)}>主题设置</button>
@@ -692,6 +730,30 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
             <label className="theme-option"><input type="radio" name="themeMode" checked={themeMode === 'dark'} onChange={() => onThemeModeChange('dark')} /> 黑夜模式</label>
             <div className="modal-actions">
               <button type="button" className="secondary-button" onClick={() => setThemeModalOpen(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {profileModalOpen ? (
+        <div className="modal-mask">
+          <div className="modal-card">
+            <h3>用户信息</h3>
+            <p>可编辑邮箱和手机号，保存后将实时更新。</p>
+            <input type="email" placeholder="邮箱" value={profileForm.email} onChange={(event) => setProfileForm((prev) => ({ ...prev, email: event.target.value }))} />
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="手机号（11位，如 13800138000）"
+              value={profileForm.phone}
+              onChange={(event) => {
+                const digitsOnly = event.target.value.replace(/\D/g, '').slice(0, 11)
+                setProfileForm((prev) => ({ ...prev, phone: digitsOnly }))
+              }}
+            />
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setProfileModalOpen(false)}>取消</button>
+              <button type="button" className="mini-btn" onClick={saveProfile}>保存信息</button>
             </div>
           </div>
         </div>

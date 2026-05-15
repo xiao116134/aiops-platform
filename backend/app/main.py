@@ -2,13 +2,16 @@ from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .db import get_user, init_db, update_avatar, update_password
+from .db import get_user, init_db, update_avatar, update_password, update_profile
 from .schemas import (
+    AlertDetailResponse,
+    AlertsListResponse,
+    AssignAlertRequest,
     AvatarUploadResponse,
     ChangePasswordRequest,
     LoginRequest,
@@ -16,11 +19,22 @@ from .schemas import (
     MessageResponse,
     RefreshTokenRequest,
     RefreshTokenResponse,
+    UpdateProfileRequest,
     UserInfo,
 )
 from .security import create_access_token, create_refresh_token, decode_token
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(
+    title=settings.app_name,
+    description='AiOps 平台后端 API 文档（认证、用户、告警中心）。',
+    version='1.0.0',
+    openapi_tags=[
+        {'name': 'system', 'description': '系统状态与健康检查'},
+        {'name': 'auth', 'description': '登录与 token 刷新'},
+        {'name': 'user', 'description': '当前用户、密码与头像'},
+        {'name': 'alerts', 'description': '告警中心列表、详情与处置动作'},
+    ],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -127,12 +141,24 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict:
     return {'username': username, 'role': role}
 
 
-@app.get('/health')
+@app.get(
+    '/health',
+    tags=['system'],
+    summary='健康检查',
+    response_description='服务存活状态',
+)
 def health() -> dict[str, str]:
     return {'status': 'ok'}
 
 
-@app.post('/api/login', response_model=LoginResponse)
+@app.post(
+    '/api/login',
+    response_model=LoginResponse,
+    tags=['auth'],
+    summary='账号登录',
+    response_description='返回 access token、refresh token 与用户信息',
+    responses={401: {'description': '用户名或密码错误'}},
+)
 def login(payload: LoginRequest) -> LoginResponse:
     user = get_user(payload.username)
     if user is None or user['password'] != payload.password:
@@ -143,11 +169,24 @@ def login(payload: LoginRequest) -> LoginResponse:
     return LoginResponse(
         token=token,
         refresh_token=refresh_token,
-        user=UserInfo(username=user['username'], role=user['role'], avatar_url=user['avatar_url'] or ''),
+        user=UserInfo(
+            username=user['username'],
+            role=user['role'],
+            avatar_url=user['avatar_url'] or '',
+            email=user.get('email') or '',
+            phone=user.get('phone') or '',
+        ),
     )
 
 
-@app.post('/api/refresh-token', response_model=RefreshTokenResponse)
+@app.post(
+    '/api/refresh-token',
+    response_model=RefreshTokenResponse,
+    tags=['auth'],
+    summary='刷新 Access Token',
+    response_description='返回新的 access token',
+    responses={401: {'description': 'refresh token 无效或过期'}},
+)
 def refresh_token(payload: RefreshTokenRequest) -> RefreshTokenResponse:
     token_payload = decode_token(payload.refresh_token)
     if token_payload.get('type') != 'refresh':
@@ -162,7 +201,14 @@ def refresh_token(payload: RefreshTokenRequest) -> RefreshTokenResponse:
     return RefreshTokenResponse(token=token)
 
 
-@app.get('/api/me', response_model=UserInfo)
+@app.get(
+    '/api/me',
+    response_model=UserInfo,
+    tags=['user'],
+    summary='获取当前用户',
+    response_description='返回当前登录用户信息',
+    responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '用户不存在'}},
+)
 def me(user: dict = Depends(get_current_user)) -> UserInfo:
     user_record = get_user(user['username'])
     if user_record is None:
@@ -171,10 +217,23 @@ def me(user: dict = Depends(get_current_user)) -> UserInfo:
         username=user_record['username'],
         role=user_record['role'],
         avatar_url=user_record['avatar_url'] or '',
+        email=user_record.get('email') or '',
+        phone=user_record.get('phone') or '',
     )
 
 
-@app.post('/api/change-password', response_model=MessageResponse)
+@app.post(
+    '/api/change-password',
+    response_model=MessageResponse,
+    tags=['user'],
+    summary='修改密码',
+    response_description='返回修改结果',
+    responses={
+        400: {'description': '旧密码错误 / 新旧密码相同'},
+        401: {'description': '未登录或 token 无效'},
+        404: {'description': '用户不存在'},
+    },
+)
 def change_password(payload: ChangePasswordRequest, user: dict = Depends(get_current_user)) -> MessageResponse:
     user_record = get_user(user['username'])
     if user_record is None:
@@ -190,7 +249,38 @@ def change_password(payload: ChangePasswordRequest, user: dict = Depends(get_cur
     return MessageResponse(message='密码修改成功')
 
 
-@app.post('/api/upload-avatar', response_model=AvatarUploadResponse)
+@app.post(
+    '/api/profile',
+    response_model=MessageResponse,
+    tags=['user'],
+    summary='更新用户信息',
+    response_description='返回用户信息更新结果',
+    responses={400: {'description': '邮箱或手机号格式不合法'}, 401: {'description': '未登录或 token 无效'}, 404: {'description': '用户不存在'}},
+)
+def update_user_profile(payload: UpdateProfileRequest, user: dict = Depends(get_current_user)) -> MessageResponse:
+    user_record = get_user(user['username'])
+    if user_record is None:
+        raise HTTPException(status_code=404, detail='用户不存在')
+
+    email = payload.email.strip()
+    phone = payload.phone.strip()
+    if '@' not in email:
+        raise HTTPException(status_code=400, detail='邮箱格式不正确')
+    if not phone.isdigit() or len(phone) != 11 or not phone.startswith('1'):
+        raise HTTPException(status_code=400, detail='手机号需为 11 位大陆手机号')
+
+    update_profile(user['username'], email, phone)
+    return MessageResponse(message='用户信息更新成功')
+
+
+@app.post(
+    '/api/upload-avatar',
+    response_model=AvatarUploadResponse,
+    tags=['user'],
+    summary='上传头像',
+    response_description='返回头像访问地址',
+    responses={400: {'description': '图片类型或大小不合法'}, 401: {'description': '未登录或 token 无效'}},
+)
 async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_current_user)) -> AvatarUploadResponse:
     if file.content_type not in {'image/png', 'image/jpeg', 'image/jpg', 'image/webp'}:
         raise HTTPException(status_code=400, detail='仅支持 png/jpg/webp 图片')
@@ -213,7 +303,14 @@ async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_c
     return AvatarUploadResponse(message='头像上传成功', avatar_url=avatar_url)
 
 
-@app.get('/api/alerts')
+@app.get(
+    '/api/alerts',
+    response_model=AlertsListResponse,
+    tags=['alerts'],
+    summary='获取告警列表',
+    response_description='返回告警列表、服务筛选项与总数',
+    responses={401: {'description': '未登录或 token 无效'}},
+)
 def list_alerts(
     _: dict = Depends(get_current_user),
     level: str = Query(default='all'),
@@ -239,7 +336,14 @@ def list_alerts(
     return {'items': filtered, 'services': services, 'total': len(filtered)}
 
 
-@app.get('/api/alerts/{alert_id}')
+@app.get(
+    '/api/alerts/{alert_id}',
+    response_model=AlertDetailResponse,
+    tags=['alerts'],
+    summary='获取告警详情',
+    response_description='返回告警影响面、时间线与处置记录',
+    responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
+)
 def get_alert_detail(alert_id: str, _: dict = Depends(get_current_user)) -> dict:
     alert = find_alert(alert_id)
     detail = alert_detail_map.get(alert_id)
@@ -260,7 +364,14 @@ def get_alert_detail(alert_id: str, _: dict = Depends(get_current_user)) -> dict
     }
 
 
-@app.post('/api/alerts/{alert_id}/ack', response_model=MessageResponse)
+@app.post(
+    '/api/alerts/{alert_id}/ack',
+    response_model=MessageResponse,
+    tags=['alerts'],
+    summary='确认告警',
+    response_description='返回确认结果',
+    responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
+)
 def ack_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
     alert = find_alert(alert_id)
     if alert is None:
@@ -273,7 +384,14 @@ def ack_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageR
     return MessageResponse(message='告警已确认')
 
 
-@app.post('/api/alerts/{alert_id}/silence', response_model=MessageResponse)
+@app.post(
+    '/api/alerts/{alert_id}/silence',
+    response_model=MessageResponse,
+    tags=['alerts'],
+    summary='静默告警',
+    response_description='返回静默结果',
+    responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
+)
 def silence_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
     alert = find_alert(alert_id)
     if alert is None:
@@ -286,9 +404,20 @@ def silence_alert(alert_id: str, user: dict = Depends(get_current_user)) -> Mess
     return MessageResponse(message='告警已静默')
 
 
-@app.post('/api/alerts/{alert_id}/assign', response_model=MessageResponse)
-def assign_alert(alert_id: str, payload: dict = Body(default={}), user: dict = Depends(get_current_user)) -> MessageResponse:
-    assignee = str(payload.get('assignee', '')).strip()
+@app.post(
+    '/api/alerts/{alert_id}/assign',
+    response_model=MessageResponse,
+    tags=['alerts'],
+    summary='指派告警',
+    response_description='返回指派结果',
+    responses={
+        400: {'description': 'assignee 不能为空'},
+        401: {'description': '未登录或 token 无效'},
+        404: {'description': '告警不存在'},
+    },
+)
+def assign_alert(alert_id: str, payload: AssignAlertRequest, user: dict = Depends(get_current_user)) -> MessageResponse:
+    assignee = payload.assignee.strip()
     if not assignee:
         raise HTTPException(status_code=400, detail='assignee 不能为空')
 

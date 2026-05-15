@@ -12,6 +12,10 @@ export async function changePassword(payload) {
   return authorizedPost('/api/change-password', payload)
 }
 
+export async function updateProfile(payload) {
+  return authorizedPost('/api/profile', payload)
+}
+
 export async function uploadAvatar(file) {
   const formData = new FormData()
   formData.append('file', file)
