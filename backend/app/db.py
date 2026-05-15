@@ -7,6 +7,18 @@ from psycopg.rows import dict_row
 from .config import settings
 
 
+ALERT_STATUS_OPEN = 'open'
+ALERT_STATUS_ACKED = 'acked'
+ALERT_STATUS_SILENCED = 'silenced'
+ALERT_STATUS_CLOSED = 'closed'
+ALERT_STATUSES = {
+    ALERT_STATUS_OPEN,
+    ALERT_STATUS_ACKED,
+    ALERT_STATUS_SILENCED,
+    ALERT_STATUS_CLOSED,
+}
+
+
 def get_conn():
     if not settings.database_url:
         raise RuntimeError('DATABASE_URL 未配置，无法连接 PostgreSQL')
@@ -497,6 +509,40 @@ def update_alert_status(alert_id: str, status: str, default_assignee: str) -> bo
             updated = cur.fetchone()
         conn.commit()
     return updated is not None
+
+
+def transition_alert_status(
+    alert_id: str,
+    target_status: str,
+    default_assignee: str,
+    allowed_current_statuses: set[str] | None = None,
+) -> tuple[bool, str | None]:
+    if target_status not in ALERT_STATUSES:
+        return False, 'invalid_target_status'
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT status FROM alerts WHERE id = %s', (alert_id,))
+            current = cur.fetchone()
+            if current is None:
+                return False, 'not_found'
+
+            current_status = current.get('status')
+            if allowed_current_statuses is not None and current_status not in allowed_current_statuses:
+                return False, 'invalid_current_status'
+
+            cur.execute(
+                '''
+                UPDATE alerts
+                SET status = %s,
+                    assignee = CASE WHEN COALESCE(assignee, '') = '' THEN %s ELSE assignee END
+                WHERE id = %s
+                ''',
+                (target_status, default_assignee, alert_id),
+            )
+        conn.commit()
+
+    return True, None
 
 
 def assign_alert(alert_id: str, assignee: str) -> bool:

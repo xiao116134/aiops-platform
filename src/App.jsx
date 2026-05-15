@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ackAlert,
   assignAlert,
+  closeAlert,
   reopenAlert,
   changePassword,
   fetchAlertDetail,
@@ -290,6 +291,7 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
       open: '未处理',
       acked: '已确认',
       silenced: '已静默',
+      closed: '已关闭',
     }
     const levelTagMap = {
       P1: '严重告警',
@@ -351,10 +353,18 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
   const ticketView = useMemo(() => {
     const pendingTickets = noticeAlerts.filter((item) => item.status === 'open')
     const processingTickets = noticeAlerts.filter((item) => item.status === 'acked')
-    const completedTickets = noticeAlerts.filter((item) => item.status === 'silenced')
+    const completedTickets = noticeAlerts.filter((item) => item.status === 'closed')
 
     const recentRows = noticeAlerts.slice(0, 3).map((item, index) => {
-      const statusText = item.status === 'open' ? '待处理' : item.status === 'acked' ? '处理中' : '已完成'
+      const statusText = item.status === 'open'
+        ? '待处理'
+        : item.status === 'acked'
+          ? '处理中'
+          : item.status === 'closed'
+            ? '已完成'
+            : item.status === 'silenced'
+              ? '已静默'
+              : item.status
       return {
         id: `TK-${3900 + index}`,
         text: `${item.title}（${item.id}）`,
@@ -554,8 +564,12 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
       onProfileMessage('该告警已静默', true)
       return
     }
-    if (action === 'reopen' && currentStatus && currentStatus !== 'silenced') {
-      onProfileMessage('仅已静默告警可重新打开', true)
+    if (action === 'close' && currentStatus && currentStatus !== 'open' && currentStatus !== 'acked') {
+      onProfileMessage('仅 open/acked 状态可关闭', true)
+      return
+    }
+    if (action === 'reopen' && currentStatus && currentStatus !== 'closed') {
+      onProfileMessage('仅已关闭告警可重新打开', true)
       return
     }
 
@@ -572,6 +586,10 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
         const assignee = window.prompt('请输入指派人（如：admin / ops）')
         if (!assignee) return
         const result = await assignAlert(alertId, assignee)
+        onProfileMessage(result.message)
+      }
+      if (action === 'close') {
+        const result = await closeAlert(alertId)
         onProfileMessage(result.message)
       }
       if (action === 'reopen') {
@@ -853,6 +871,7 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
                   <option value="open">未处理</option>
                   <option value="acked">已确认</option>
                   <option value="silenced">已静默</option>
+                  <option value="closed">已关闭</option>
                 </select>
                 <select value={alertFilters.service} onChange={(event) => onAlertFilterChange('service', event.target.value)}>
                   <option value="all">全部服务</option>
@@ -905,7 +924,10 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
                               onClick={() => onAlertAction('silence', alert.id, alert.status)}
                             >静默</button>
                             <button type="button" onClick={() => onAlertAction('assign', alert.id, alert.status)}>指派</button>
-                            {alert.status === 'silenced' ? (
+                            {(alert.status === 'open' || alert.status === 'acked') ? (
+                              <button type="button" onClick={() => onAlertAction('close', alert.id, alert.status)}>关闭</button>
+                            ) : null}
+                            {alert.status === 'closed' ? (
                               <button type="button" onClick={() => onAlertAction('reopen', alert.id, alert.status)}>重新打开</button>
                             ) : null}
                           </td>
@@ -1204,7 +1226,10 @@ function DashboardView({ currentUser, onLogout, onProfileMessage, onUserRefresh,
                     onClick={() => onAlertAction('silence', alertDetail.id, alertDetail.status)}
                   >静默</button>
                   <button type="button" className="mini-btn" onClick={() => onAlertAction('assign', alertDetail.id, alertDetail.status)}>指派</button>
-                  {alertDetail.status === 'silenced' ? (
+                  {(alertDetail.status === 'open' || alertDetail.status === 'acked') ? (
+                    <button type="button" className="mini-btn" onClick={() => onAlertAction('close', alertDetail.id, alertDetail.status)}>关闭</button>
+                  ) : null}
+                  {alertDetail.status === 'closed' ? (
                     <button type="button" className="mini-btn" onClick={() => onAlertAction('reopen', alertDetail.id, alertDetail.status)}>重新打开</button>
                   ) : null}
                 </>

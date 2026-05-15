@@ -7,6 +7,10 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import (
+    ALERT_STATUS_ACKED,
+    ALERT_STATUS_CLOSED,
+    ALERT_STATUS_OPEN,
+    ALERT_STATUS_SILENCED,
     add_alert_action,
     assign_alert as assign_alert_db,
     get_alert_detail as get_alert_detail_db,
@@ -14,7 +18,7 @@ from .db import (
     init_db,
     list_alerts as list_alerts_db,
     touch_last_login,
-    update_alert_status,
+    transition_alert_status,
     update_avatar,
     update_password,
     update_profile,
@@ -316,9 +320,16 @@ def get_alert_detail(
     responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
 )
 def ack_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
-    ok = update_alert_status(alert_id, 'acked', user['username'])
+    ok, reason = transition_alert_status(
+        alert_id,
+        ALERT_STATUS_ACKED,
+        user['username'],
+        allowed_current_statuses={ALERT_STATUS_OPEN},
+    )
     if not ok:
-        raise HTTPException(status_code=404, detail='告警不存在')
+        if reason == 'not_found':
+            raise HTTPException(status_code=404, detail='告警不存在')
+        raise HTTPException(status_code=400, detail='仅 open 状态可确认')
 
     add_alert_action(alert_id, user['username'], '确认告警')
     return MessageResponse(message='告警已确认')
@@ -333,12 +344,43 @@ def ack_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageR
     responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
 )
 def silence_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
-    ok = update_alert_status(alert_id, 'silenced', user['username'])
+    ok, reason = transition_alert_status(
+        alert_id,
+        ALERT_STATUS_SILENCED,
+        user['username'],
+        allowed_current_statuses={ALERT_STATUS_OPEN, ALERT_STATUS_ACKED, ALERT_STATUS_CLOSED},
+    )
     if not ok:
-        raise HTTPException(status_code=404, detail='告警不存在')
+        if reason == 'not_found':
+            raise HTTPException(status_code=404, detail='告警不存在')
+        raise HTTPException(status_code=400, detail='仅 open/acked/closed 状态可静默')
 
     add_alert_action(alert_id, user['username'], '静默告警')
     return MessageResponse(message='告警已静默')
+
+
+@app.post(
+    '/api/alerts/{alert_id}/close',
+    response_model=MessageResponse,
+    tags=['alerts'],
+    summary='关闭告警',
+    response_description='将告警状态更新为 closed',
+    responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
+)
+def close_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
+    ok, reason = transition_alert_status(
+        alert_id,
+        ALERT_STATUS_CLOSED,
+        user['username'],
+        allowed_current_statuses={ALERT_STATUS_OPEN, ALERT_STATUS_ACKED},
+    )
+    if not ok:
+        if reason == 'not_found':
+            raise HTTPException(status_code=404, detail='告警不存在')
+        raise HTTPException(status_code=400, detail='仅 open/acked 状态可关闭')
+
+    add_alert_action(alert_id, user['username'], '关闭告警')
+    return MessageResponse(message='告警已关闭')
 
 
 @app.post(
@@ -346,13 +388,20 @@ def silence_alert(alert_id: str, user: dict = Depends(get_current_user)) -> Mess
     response_model=MessageResponse,
     tags=['alerts'],
     summary='重新打开告警',
-    response_description='将告警状态重置为 open',
+    response_description='将 closed 告警状态重置为 open',
     responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
 )
 def reopen_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
-    ok = update_alert_status(alert_id, 'open', user['username'])
+    ok, reason = transition_alert_status(
+        alert_id,
+        ALERT_STATUS_OPEN,
+        user['username'],
+        allowed_current_statuses={ALERT_STATUS_CLOSED},
+    )
     if not ok:
-        raise HTTPException(status_code=404, detail='告警不存在')
+        if reason == 'not_found':
+            raise HTTPException(status_code=404, detail='告警不存在')
+        raise HTTPException(status_code=400, detail='仅已关闭告警可重新打开')
 
     add_alert_action(alert_id, user['username'], '重新打开告警')
     return MessageResponse(message='告警已重新打开')

@@ -56,6 +56,10 @@ export async function silenceAlert(alertId) {
   return authorizedPost(`/api/alerts/${alertId}/silence`, {})
 }
 
+export async function closeAlert(alertId) {
+  return authorizedPost(`/api/alerts/${alertId}/close`, {})
+}
+
 export async function reopenAlert(alertId) {
   return authorizedPost(`/api/alerts/${alertId}/reopen`, {})
 }
