@@ -102,6 +102,11 @@ body {
   font-size: 14px;
 }
 
+.text-btn:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .message {
   margin: 0;
   padding: 10px 12px;
@@ -157,6 +162,7 @@ body {
   background: #f3f8ff;
   padding: 18px 12px;
   transition: width 0.2s ease;
+  overflow-y: auto;
 }
 
 .sidebar.collapsed {
@@ -186,6 +192,13 @@ body {
   background: #eaf4ff;
   overflow: hidden;
   white-space: nowrap;
+  border: 0;
+  width: 100%;
+  cursor: pointer;
+}
+
+.brand:hover {
+  background: #dff0ff;
 }
 
 .collapse-btn {
@@ -237,6 +250,7 @@ body {
   font-weight: 500;
   background: transparent;
   cursor: pointer;
+  position: relative;
   transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
@@ -282,6 +296,17 @@ body {
   color: #0f4ea5;
 }
 
+.menu-item.active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: #2b78d1;
+}
+
 .sub-menu {
   margin-top: 6px;
   margin-left: 8px;
@@ -296,6 +321,16 @@ body {
   border-radius: 8px;
   color: #46607c;
   font-size: 13px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sub-menu-item:hover {
+  background: #f3f8ff;
+  color: #0f4ea5;
 }
 
 .sub-menu-item.active {
@@ -388,7 +423,7 @@ body {
   position: absolute;
   right: 0;
   top: 56px;
-  width: 640px;
+  width: 500px;
   border: 1px solid #e5eaf4;
   border-radius: 10px;
   background: #fff;
@@ -503,9 +538,9 @@ body {
 .notice-item {
   border: 1px solid #edf1f8;
   border-radius: 12px;
-  padding: 10px;
+  padding: 10px 8px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 8px;
   cursor: pointer;
 }
@@ -520,19 +555,23 @@ body {
 
 .notice-item-title-row {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .notice-item-title-row h4 {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
+  flex: 1;
+  min-width: 0;
 }
 
 .notice-item-title-row time {
   color: #6b7280;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .notice-item-meta em {
@@ -742,6 +781,19 @@ body {
   overflow: auto;
 }
 
+.alert-pagination {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.alert-pagination span {
+  color: #64748b;
+  font-size: 13px;
+}
+
 .alert-table {
   width: 100%;
   border-collapse: collapse;
@@ -788,6 +840,18 @@ body {
   background: #eff6ff;
 }
 
+.alert-table td.ops button:disabled {
+  background: #f4f6fa;
+  border-color: #e5ebf5;
+  color: #9aa7ba;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.alert-table td.ops button:disabled:hover {
+  background: #f4f6fa;
+}
+
 .pill {
   display: inline-block;
   padding: 2px 8px;
@@ -800,8 +864,10 @@ body {
 .pill.p2 { background: #ea580c; }
 .pill.p3 { background: #0284c7; }
 
-.alert-detail-modal {
+.modal-card.alert-detail-modal {
   width: min(760px, 92vw);
+  max-width: min(760px, 92vw);
+  overflow-x: hidden;
 }
 
 .detail-block {
@@ -910,7 +976,7 @@ body {
   }
 
   .notice-popover {
-    width: 520px;
+    width: 460px;
   }
 }
 
@@ -966,6 +1032,40 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.alert-action-filter-row {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: 180px 120px 74px 74px;
+  gap: 8px;
+}
+
+.alert-action-filter-row > * {
+  min-width: 0;
+}
+
+.alert-action-filter-row input,
+.alert-action-filter-row select {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.alert-action-filter-row input[type='date'] {
+  padding: 0 6px;
+}
+
+@media (max-width: 900px) {
+  .alert-action-filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .theme-preview-grid {
@@ -1094,6 +1194,18 @@ body {
 
 .theme-dark .alert-table td.ops button:hover {
   background: #4a5666;
+}
+
+.theme-dark .alert-table td.ops button:disabled {
+  background: #343c46;
+  border-color: #4c5868;
+  color: #8592a6;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.theme-dark .alert-table td.ops button:disabled:hover {
+  background: #343c46;
 }
 
 .theme-dark .detail-block {

@@ -32,12 +32,20 @@ export async function fetchAlerts(filters) {
     status: filters.status,
     service: filters.service,
     q: filters.q,
+    page: String(filters.page ?? 1),
+    page_size: String(filters.page_size ?? 10),
   })
   return authorizedGet(`/api/alerts?${params.toString()}`)
 }
 
-export async function fetchAlertDetail(alertId) {
-  return authorizedGet(`/api/alerts/${alertId}`)
+export async function fetchAlertDetail(alertId, filters = {}) {
+  const params = new URLSearchParams()
+  if (filters.action_operator) params.set('action_operator', filters.action_operator)
+  if (filters.action_from) params.set('action_from', filters.action_from)
+  if (filters.action_to) params.set('action_to', filters.action_to)
+  if (filters.action_limit) params.set('action_limit', String(filters.action_limit))
+  const query = params.toString()
+  return authorizedGet(`/api/alerts/${alertId}${query ? `?${query}` : ''}`)
 }
 
 export async function ackAlert(alertId) {
@@ -46,6 +54,10 @@ export async function ackAlert(alertId) {
 
 export async function silenceAlert(alertId) {
   return authorizedPost(`/api/alerts/${alertId}/silence`, {})
+}
+
+export async function reopenAlert(alertId) {
+  return authorizedPost(`/api/alerts/${alertId}/reopen`, {})
 }
 
 export async function assignAlert(alertId, assignee) {

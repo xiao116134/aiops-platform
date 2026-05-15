@@ -1,4 +1,3 @@
-from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,7 +6,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .db import get_user, init_db, update_avatar, update_password, update_profile
+from .db import (
+    add_alert_action,
+    assign_alert as assign_alert_db,
+    get_alert_detail as get_alert_detail_db,
+    get_user,
+    init_db,
+    list_alerts as list_alerts_db,
+    touch_last_login,
+    update_alert_status,
+    update_avatar,
+    update_password,
+    update_profile,
+)
 from .schemas import (
     AlertDetailResponse,
     AlertsListResponse,
@@ -50,78 +61,30 @@ UPLOAD_DIR = BASE_DIR / 'uploads' / 'avatars'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount('/uploads', StaticFiles(directory=BASE_DIR / 'uploads'), name='uploads')
 
-mock_alerts = [
-    {'id': 'ALT-1001', 'level': 'P1', 'status': 'open', 'service': 'payment-api', 'title': '支付接口错误率突增', 'assignee': '', 'time': '22:58'},
-    {'id': 'ALT-1002', 'level': 'P2', 'status': 'open', 'service': 'user-center', 'title': '登录延迟超过阈值', 'assignee': '', 'time': '22:41'},
-    {'id': 'ALT-1003', 'level': 'P3', 'status': 'silenced', 'service': 'k8s-node-03', 'title': '磁盘使用率超过 85%', 'assignee': 'ops', 'time': '22:33'},
-    {'id': 'ALT-1004', 'level': 'P2', 'status': 'acked', 'service': 'mysql-main', 'title': '主从延迟波动', 'assignee': 'admin', 'time': '22:19'},
-]
-
-alert_detail_map = {
-    'ALT-1001': {
-        'impact': '支付成功率从 99.2% 降至 93.7%，影响华东与华南可用区。',
-        'timeline': [
-            {'time': '22:48', 'event': '错误率开始爬升，超过 3% 阈值'},
-            {'time': '22:53', 'event': '触发 P1 告警并通知值班群'},
-            {'time': '22:58', 'event': '错误率达峰值 6.4%'}
-        ],
-        'actions': [
-            {'time': '22:54', 'operator': 'system', 'action': '自动升级告警级别 P2 → P1'}
-        ],
-    },
-    'ALT-1002': {
-        'impact': '登录 P95 延迟提升到 1.8s，少量用户登录等待变慢。',
-        'timeline': [
-            {'time': '22:31', 'event': '用户中心 CPU 使用率持续上升'},
-            {'time': '22:38', 'event': '登录接口 P95 超过阈值 1.5s'},
-            {'time': '22:41', 'event': '触发 P2 延迟告警'}
-        ],
-        'actions': [
-            {'time': '22:42', 'operator': 'system', 'action': '已通知 user-center 值班人'}
-        ],
-    },
-    'ALT-1003': {
-        'impact': 'k8s-node-03 磁盘余量不足，风险可控。',
-        'timeline': [
-            {'time': '22:20', 'event': '磁盘使用率超过 80%'},
-            {'time': '22:27', 'event': '磁盘使用率超过 85%，触发告警'},
-            {'time': '22:33', 'event': '告警被静默 30 分钟'}
-        ],
-        'actions': [
-            {'time': '22:33', 'operator': 'ops', 'action': '静默告警 30 分钟'}
-        ],
-    },
-    'ALT-1004': {
-        'impact': 'MySQL 主从延迟波动，当前业务读写未见明显失败。',
-        'timeline': [
-            {'time': '22:05', 'event': '复制延迟上升到 2.2s'},
-            {'time': '22:12', 'event': '超过阈值触发 P2 告警'},
-            {'time': '22:19', 'event': '管理员确认并持续观察'}
-        ],
-        'actions': [
-            {'time': '22:19', 'operator': 'admin', 'action': '确认告警，观察延迟曲线'}
-        ],
-    },
-}
-
-
-def find_alert(alert_id: str) -> dict | None:
-    for alert in mock_alerts:
-        if alert['id'] == alert_id:
-            return alert
-    return None
-
-
-def append_alert_action(alert_id: str, operator: str, action: str) -> None:
-    detail = alert_detail_map.get(alert_id)
-    if detail is None:
-        return
-    detail['actions'].insert(0, {'time': '刚刚', 'operator': operator, 'action': action})
-
-
 @app.on_event('startup')
 def on_startup() -> None:
     init_db()
+
+
+def format_dt(value) -> str:
+    if value is None:
+        return ''
+    try:
+        return value.isoformat()
+    except AttributeError:
+        return str(value)
+
+
+def build_user_info(user_record: dict) -> UserInfo:
+    return UserInfo(
+        username=user_record['username'],
+        role=user_record['role'],
+        avatar_url=user_record['avatar_url'] or '',
+        email=user_record.get('email') or '',
+        phone=user_record.get('phone') or '',
+        created_at=format_dt(user_record.get('created_at')),
+        last_login_at=format_dt(user_record.get('last_login_at')),
+    )
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> dict:
@@ -164,19 +127,11 @@ def login(payload: LoginRequest) -> LoginResponse:
     if user is None or user['password'] != payload.password:
         raise HTTPException(status_code=401, detail='用户名或密码错误')
 
+    touch_last_login(user['username'])
+    user = get_user(payload.username)
     token = create_access_token(user['username'], user['role'])
     refresh_token = create_refresh_token(user['username'], user['role'])
-    return LoginResponse(
-        token=token,
-        refresh_token=refresh_token,
-        user=UserInfo(
-            username=user['username'],
-            role=user['role'],
-            avatar_url=user['avatar_url'] or '',
-            email=user.get('email') or '',
-            phone=user.get('phone') or '',
-        ),
-    )
+    return LoginResponse(token=token, refresh_token=refresh_token, user=build_user_info(user))
 
 
 @app.post(
@@ -213,13 +168,7 @@ def me(user: dict = Depends(get_current_user)) -> UserInfo:
     user_record = get_user(user['username'])
     if user_record is None:
         raise HTTPException(status_code=404, detail='用户不存在')
-    return UserInfo(
-        username=user_record['username'],
-        role=user_record['role'],
-        avatar_url=user_record['avatar_url'] or '',
-        email=user_record.get('email') or '',
-        phone=user_record.get('phone') or '',
-    )
+    return build_user_info(user_record)
 
 
 @app.post(
@@ -255,7 +204,7 @@ def change_password(payload: ChangePasswordRequest, user: dict = Depends(get_cur
     tags=['user'],
     summary='更新用户信息',
     response_description='返回用户信息更新结果',
-    responses={400: {'description': '邮箱或手机号格式不合法'}, 401: {'description': '未登录或 token 无效'}, 404: {'description': '用户不存在'}},
+    responses={400: {'description': '邮箱或手机号格式不合法 / 已被占用'}, 401: {'description': '未登录或 token 无效'}, 404: {'description': '用户不存在'}},
 )
 def update_user_profile(payload: UpdateProfileRequest, user: dict = Depends(get_current_user)) -> MessageResponse:
     user_record = get_user(user['username'])
@@ -269,7 +218,14 @@ def update_user_profile(payload: UpdateProfileRequest, user: dict = Depends(get_
     if not phone.isdigit() or len(phone) != 11 or not phone.startswith('1'):
         raise HTTPException(status_code=400, detail='手机号需为 11 位大陆手机号')
 
-    update_profile(user['username'], email, phone)
+    ok, reason = update_profile(user['username'], email, phone, user['username'])
+    if not ok:
+        if reason == 'not_found':
+            raise HTTPException(status_code=404, detail='用户不存在')
+        if reason == 'duplicate':
+            raise HTTPException(status_code=400, detail='邮箱或手机号已被占用')
+        raise HTTPException(status_code=400, detail='用户信息更新失败')
+
     return MessageResponse(message='用户信息更新成功')
 
 
@@ -317,23 +273,10 @@ def list_alerts(
     status: str = Query(default='all'),
     service: str = Query(default='all'),
     q: str = Query(default=''),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
 ) -> dict:
-    filtered = []
-    keyword = q.strip().lower()
-
-    for alert in mock_alerts:
-        if level != 'all' and alert['level'] != level:
-            continue
-        if status != 'all' and alert['status'] != status:
-            continue
-        if service != 'all' and alert['service'] != service:
-            continue
-        if keyword and keyword not in (alert['title'] + alert['id'] + alert['service']).lower():
-            continue
-        filtered.append(deepcopy(alert))
-
-    services = sorted({item['service'] for item in mock_alerts})
-    return {'items': filtered, 'services': services, 'total': len(filtered)}
+    return list_alerts_db(level=level, status=status, service=service, q=q, page=page, page_size=page_size)
 
 
 @app.get(
@@ -341,27 +284,27 @@ def list_alerts(
     response_model=AlertDetailResponse,
     tags=['alerts'],
     summary='获取告警详情',
-    response_description='返回告警影响面、时间线与处置记录',
+    response_description='返回告警影响面、时间线与处置记录（支持按操作人/时间筛选处置记录）',
     responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
 )
-def get_alert_detail(alert_id: str, _: dict = Depends(get_current_user)) -> dict:
-    alert = find_alert(alert_id)
-    detail = alert_detail_map.get(alert_id)
-    if alert is None or detail is None:
+def get_alert_detail(
+    alert_id: str,
+    _: dict = Depends(get_current_user),
+    action_operator: str = Query(default=''),
+    action_from: str = Query(default=''),
+    action_to: str = Query(default=''),
+    action_limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    detail = get_alert_detail_db(
+        alert_id,
+        action_operator=action_operator,
+        action_from=action_from,
+        action_to=action_to,
+        action_limit=action_limit,
+    )
+    if detail is None:
         raise HTTPException(status_code=404, detail='告警不存在')
-
-    return {
-        'id': alert['id'],
-        'level': alert['level'],
-        'status': alert['status'],
-        'service': alert['service'],
-        'title': alert['title'],
-        'assignee': alert['assignee'],
-        'time': alert['time'],
-        'impact': detail['impact'],
-        'timeline': detail['timeline'],
-        'actions': detail['actions'],
-    }
+    return detail
 
 
 @app.post(
@@ -373,14 +316,11 @@ def get_alert_detail(alert_id: str, _: dict = Depends(get_current_user)) -> dict
     responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
 )
 def ack_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
-    alert = find_alert(alert_id)
-    if alert is None:
+    ok = update_alert_status(alert_id, 'acked', user['username'])
+    if not ok:
         raise HTTPException(status_code=404, detail='告警不存在')
 
-    alert['status'] = 'acked'
-    if not alert['assignee']:
-        alert['assignee'] = user['username']
-    append_alert_action(alert_id, user['username'], '确认告警')
+    add_alert_action(alert_id, user['username'], '确认告警')
     return MessageResponse(message='告警已确认')
 
 
@@ -393,15 +333,29 @@ def ack_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageR
     responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
 )
 def silence_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
-    alert = find_alert(alert_id)
-    if alert is None:
+    ok = update_alert_status(alert_id, 'silenced', user['username'])
+    if not ok:
         raise HTTPException(status_code=404, detail='告警不存在')
 
-    alert['status'] = 'silenced'
-    if not alert['assignee']:
-        alert['assignee'] = user['username']
-    append_alert_action(alert_id, user['username'], '静默告警')
+    add_alert_action(alert_id, user['username'], '静默告警')
     return MessageResponse(message='告警已静默')
+
+
+@app.post(
+    '/api/alerts/{alert_id}/reopen',
+    response_model=MessageResponse,
+    tags=['alerts'],
+    summary='重新打开告警',
+    response_description='将告警状态重置为 open',
+    responses={401: {'description': '未登录或 token 无效'}, 404: {'description': '告警不存在'}},
+)
+def reopen_alert(alert_id: str, user: dict = Depends(get_current_user)) -> MessageResponse:
+    ok = update_alert_status(alert_id, 'open', user['username'])
+    if not ok:
+        raise HTTPException(status_code=404, detail='告警不存在')
+
+    add_alert_action(alert_id, user['username'], '重新打开告警')
+    return MessageResponse(message='告警已重新打开')
 
 
 @app.post(
@@ -413,18 +367,21 @@ def silence_alert(alert_id: str, user: dict = Depends(get_current_user)) -> Mess
     responses={
         400: {'description': 'assignee 不能为空'},
         401: {'description': '未登录或 token 无效'},
+        403: {'description': '仅管理员可指派告警'},
         404: {'description': '告警不存在'},
     },
 )
 def assign_alert(alert_id: str, payload: AssignAlertRequest, user: dict = Depends(get_current_user)) -> MessageResponse:
+    if user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail='仅管理员可指派告警')
+
     assignee = payload.assignee.strip()
     if not assignee:
         raise HTTPException(status_code=400, detail='assignee 不能为空')
 
-    alert = find_alert(alert_id)
-    if alert is None:
+    ok = assign_alert_db(alert_id, assignee)
+    if not ok:
         raise HTTPException(status_code=404, detail='告警不存在')
 
-    alert['assignee'] = assignee
-    append_alert_action(alert_id, user['username'], f'指派给 {assignee}')
+    add_alert_action(alert_id, user['username'], f'指派给 {assignee}')
     return MessageResponse(message=f'已指派给 {assignee}')

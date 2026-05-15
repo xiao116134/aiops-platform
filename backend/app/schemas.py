@@ -16,6 +16,8 @@ class UserInfo(BaseModel):
     avatar_url: str = ''
     email: str = ''
     phone: str = ''
+    created_at: str = ''
+    last_login_at: str = ''
 
 
 class LoginResponse(BaseModel):
@@ -61,6 +63,9 @@ class AlertsListResponse(BaseModel):
     items: list[AlertItem]
     services: list[str]
     total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class AlertTimelineEvent(BaseModel):
