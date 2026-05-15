@@ -1,0 +1,72 @@
+<svg width="2400" height="1400" viewBox="0 0 2400 1400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="base" x1="1200" y1="0" x2="1200" y2="1400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#06173A"/>
+      <stop offset="1" stop-color="#020A1A"/>
+    </linearGradient>
+    <linearGradient id="ceiling" x1="1200" y1="0" x2="1200" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A3D90"/>
+      <stop offset="1" stop-color="#092A62"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="1200" y1="700" x2="1200" y2="1400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A316F"/>
+      <stop offset="1" stop-color="#041027"/>
+    </linearGradient>
+    <radialGradient id="focusGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1200 660) rotate(90) scale(300 420)">
+      <stop stop-color="#9CF4FF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#9CF4FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <rect width="2400" height="1400" fill="url(#base)"/>
+
+  <polygon points="0,0 2400,0 1660,700 740,700" fill="url(#ceiling)"/>
+  <polygon points="740,700 1660,700 2400,1400 0,1400" fill="url(#floor)"/>
+
+  <polygon points="0,0 740,700 0,1400" fill="#082453"/>
+  <polygon points="2400,0 1660,700 2400,1400" fill="#082453"/>
+
+  <g opacity="0.35" stroke="#2B77D9" stroke-width="3">
+    <line x1="0" y1="150" x2="740" y2="700"/>
+    <line x1="0" y1="300" x2="740" y2="700"/>
+    <line x1="0" y1="450" x2="740" y2="700"/>
+    <line x1="0" y1="600" x2="740" y2="700"/>
+
+    <line x1="2400" y1="150" x2="1660" y2="700"/>
+    <line x1="2400" y1="300" x2="1660" y2="700"/>
+    <line x1="2400" y1="450" x2="1660" y2="700"/>
+    <line x1="2400" y1="600" x2="1660" y2="700"/>
+  </g>
+
+  <g opacity="0.95">
+    <rect x="930" y="0" width="540" height="74" fill="#D5FBFF"/>
+    <rect x="930" y="88" width="540" height="74" fill="#D5FBFF"/>
+    <rect x="930" y="176" width="540" height="74" fill="#D5FBFF"/>
+    <rect x="930" y="264" width="540" height="74" fill="#D5FBFF"/>
+    <rect x="930" y="352" width="540" height="74" fill="#D5FBFF"/>
+  </g>
+
+  <g opacity="0.45" filter="url(#blur)">
+    <rect x="900" y="0" width="600" height="470" fill="#9DEFFF"/>
+  </g>
+
+  <g opacity="0.55" stroke="#4EB8FF" stroke-width="4">
+    <line x1="760" y1="760" x2="430" y2="1400"/>
+    <line x1="870" y1="760" x2="660" y2="1400"/>
+    <line x1="980" y1="760" x2="930" y2="1400"/>
+    <line x1="1420" y1="760" x2="1470" y2="1400"/>
+    <line x1="1530" y1="760" x2="1740" y2="1400"/>
+    <line x1="1640" y1="760" x2="1970" y2="1400"/>
+  </g>
+
+  <g opacity="0.52" stroke="#8EEBFF" stroke-width="6" filter="url(#blur)">
+    <line x1="1100" y1="775" x2="1060" y2="1400"/>
+    <line x1="1200" y1="775" x2="1200" y2="1400"/>
+    <line x1="1300" y1="775" x2="1340" y2="1400"/>
+  </g>
+
+  <rect width="2400" height="1400" fill="url(#focusGlow)"/>
+</svg>

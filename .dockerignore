@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+.vscode
+.DS_Store
+backend/.venv
+backend/__pycache__
+backend/app/__pycache__
+backend/aiops.db
+backend/uploads
+*.log
