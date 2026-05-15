@@ -225,6 +225,17 @@ CORS_ORIGINS=https://aiops.example.com,https://ops.example.com,http://192.168.0.
 }
 ```
 
+## 后端测试（一键）
+
+```bash
+cd <AIOPS_PROJECT_ROOT>
+./scripts/test_backend.sh
+```
+
+说明：
+- 会先确保 `postgres`、`backend` 容器启动
+- 然后执行 `backend/tests/test_*.py`（当前包含 `/api/profile` 核心回归）
+
 ## PostgreSQL 验证（Compose）
 
 ```bash
